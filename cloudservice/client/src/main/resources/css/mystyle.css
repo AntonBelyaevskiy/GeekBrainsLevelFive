@@ -1,0 +1,49 @@
+.buttons{
+    -fx-effect: dropshadow( three-pass-box , rgba(0,0,0,0.3) , 5, 0.0 , 0 , 1 );
+    -fx-focus-color: transparent;
+    -fx-background-insets: 0px;
+    -fx-background-color: transparent;
+    -fx-opacity: 0.5;
+    -fx-border-color: transparent;
+    -fx-border-radius: 3;
+
+}
+
+.buttons:hover{
+    -fx-opacity: 1;
+}
+
+
+.table-view {
+    -fx-base: #7278F1;
+    /*-fx-control-inner-background: #7278F1;*/
+    /*-fx-background-color: #7278F1;*/
+    -fx-table-cell-border-color: transparent;
+    -fx-table-header-border-color: transparent;
+
+}
+
+.table-view .column-header .label {
+    -fx-text-fill: white;
+    -fx-alignment: center-left;
+    -fx-opacity: 1;
+}
+
+.table-view:focused .table-row-cell:filled:focused:selected {
+    -fx-background-color: #1435AD;
+}
+
+/*.table-row-cell:filled{*/
+    /*-fx-background-color: transparent;*/
+/*}*/
+
+/*.table-row-cell:empty{*/
+    /*-fx-background-color: #7278F1;*/
+/*}*/
+/*.split-pane:horizontal > .split-pane-divider {*/
+    /*-fx-border-color: transparent;*/
+/*}*/
+
+/*.table-row-cell{*/
+    /*-fx-border-color: transparent transparent white transparent;*/
+/*}*/
