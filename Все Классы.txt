@@ -1,6 +1,3 @@
-////////////////////////////////ПРОЕКТ////////////////////////////////
-
-//Контроллер для осуществления управления между логикой и представлением
 public class CloudController {
 
     @FXML
@@ -73,26 +70,19 @@ public class CloudController {
 
 
 
-    //прорисовываем информацию о хранящихся файлах на локальном репозитории, в TableView
     private void drawLocalTableView() {
-        localItems.clear();//сперва очищаем список, чтобы при каждом обновлении списка файлы не дублировались
+        localItems.clear();
 
-        //пробигаемся по локальному репозиторию, чтобы собрать информацию о всех файлах
         pathToStorage = Paths.get("client/storage");
         walkToLocalDirectory(pathToStorage);
 
-        //заполняем ячейки TableView значениями о файлах
         localTableView.itemsProperty().setValue(localItems);
 
-        //говорим, что именно и в какой ячейке отрисовать
         localFileName.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getName()));
         localFileSize.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getSize()));
         localFileCreateDate.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue().getCreateDate()));
     }
 
-    //прорисовываем информацию о хранящихся файлах на облаке, в TableView
-    //действия аналогичны прорисовки локального хранилища, только мы не пробигаемся по локальной папке,
-    //а запрашиваем данные у сервера
     private void drawCloudTableView() {
         cloudItems.clear();
         cloudTableView.itemsProperty().setValue(cloudItems);
@@ -104,7 +94,6 @@ public class CloudController {
         cloudFileCreateDate.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue().getCreateDate()));
     }
 
-    //действия при нажатии на кнопку зарегистрироваться
     public void goToRegistration(ActionEvent actionEvent) {
         loginPane.setVisible(false);
         loginPane.setManaged(false);
@@ -112,18 +101,15 @@ public class CloudController {
         registrationPane.setManaged(true);
     }
 
-    //действия при нажатии на кнопку войти
     public void goToCloud(ActionEvent actionEvent) {
         loginPane.setVisible(false);
         loginPane.setManaged(false);
         cloudPane.setVisible(true);
         cloudPane.setManaged(true);
 
-        //устанавливаем соединение
         connect();
     }
 
-    //действия при нажатии кнопки назад при отображении регистрационного окна
     public void backToLogin(ActionEvent actionEvent) {
         registrationPane.setVisible(false);
         registrationPane.setManaged(false);
@@ -131,29 +117,24 @@ public class CloudController {
         loginPane.setManaged(true);
     }
 
-    //Подключаемся к серверу, если авторизация прошла успешно
     public void connect() {
         network = CloudNetwork.getNetwork();
         network.run(PORT, SERVER_IP, "testLogin");
 
-        //прорисовываем оба TableView
         drawLocalTableView();
         drawCloudTableView();
     }
 
-    //перебор файлов в локальном хранилище
     private void walkToLocalDirectory(Path path) {
         try {
             Files.walkFileTree(path, new FileVisitor<Path>() {
                 @Override
                 public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                    //задать логику при обнаружении директории
                     return FileVisitResult.CONTINUE;
                 }
 
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                    //когда находим файл, добавляем его в список файлов для отображения
                     putFileInTableView(file);
                     return FileVisitResult.CONTINUE;
                 }
@@ -174,9 +155,6 @@ public class CloudController {
 
     }
 
-    //сюда прилетает файл, заносим его список элементов для отображения
-    //класс ElementForTableView содержит три поля: название, размер, время создания,
-    //создаем список для отображения с объектами этого класса
     private void putFileInTableView(Path file) {
         try {
             String name = file.getFileName().toString();
@@ -190,9 +168,8 @@ public class CloudController {
         }
     }
 
-    //метод при помощи, которого отправляем файл в облако
+
     public void uploadFile(ActionEvent actionEvent) {
-        //получаем название файла, в зависимости от того, какой файл в TableView выбран
         String name = getSelectedFileNameLocal(localTableView);
         if (name == null) {
             return;
@@ -200,7 +177,6 @@ public class CloudController {
         network.uploadFileOnCloud(name);
     }
 
-    //при загрузке файла с облака, отправляем команду и название файла
     public void downloadFileFromCloud(ActionEvent actionEvent) {
         String name = getSelectedFileNameCloud(cloudTableView);
         if (name == null) {
@@ -209,18 +185,15 @@ public class CloudController {
         network.downloadFileFromCloud(name);
     }
 
-    //метод для удаления файлов в локальном хранилище
     public void deleteFileOnLocalStorage(ActionEvent actionEvent) {
-        //получаем название файла, в зависимости от того, какой файл в TableView выбран
         String name = getSelectedFileNameLocal(localTableView);
         if (name == null) {
             return;
         }
-        //удаляем файл по его названию
         try {
             System.out.println("сейчас будет удален файл " + Paths.get("client/storage/" + name));
             Files.delete(Paths.get("client/storage/" + name));
-            drawLocalTableView();//обновляес содержимое TableView локального хранилища
+            drawLocalTableView();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -265,7 +238,6 @@ public class CloudController {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-//Класс в котором содержится бизнес-логика приложения
 public class CloudNetwork {
 
     private volatile static CloudNetwork network;
@@ -298,15 +270,11 @@ public class CloudNetwork {
 
             encoder.writeObject(new CloudFilesList(login));
 
-            //клиент в бесконечном цикле, будет слушать всё, что присылает ему сервер
-            //запускаем в отдельном потоке, чтобы не блокировать выполнение работы клиента
             Thread authThread = new Thread(() -> {
                 try {
                     while (true) {
-                        //логика клиента
                         Object message = decoder.readObject();
 
-                        //если с сервера прилетает список файлов, обновляем список на клиенте
                         if (message instanceof CloudFilesList)
                             takeFilesListFromServer((CloudFilesList) message);
 
@@ -333,8 +301,6 @@ public class CloudNetwork {
                 }
             });
 
-            //когда логинимся на клиенте, то сперва показываем актуальный список файлов в облаке
-            //после чего запускаем поток на прослушивание сервера
             Object message = decoder.readObject();
             if (message instanceof CloudFilesList) {
                 takeFilesListFromServer((CloudFilesList) message);
@@ -347,24 +313,20 @@ public class CloudNetwork {
         }
     }
 
-    //получить список файлов в хранилище на сервере
     private void takeFilesListFromServer(CloudFilesList message) {
         System.out.println("пришел список файлов");
         cloudStorage = message.getServerStorageList();
     }
 
-    //обрабатываем команды, которые прилетают с сервера
     private void doCommand(CloudCommand message) {
         System.out.println(message.getCommandName());
 
         if (message.getCommandName().equals("/updateList")) {
-            //сделать автоматическое обновление TableView при изменении его содержимого
-            //оповистить клиента о загрузке файла
             System.out.println("список обновился");
         }
     }
 
-    //если из облака прилетает файл, то сохраняем его на локальном репозитории
+
     private void saveFile(CloudFile message) {
         Path path = Paths.get("client/storage/" + message.getName());
         byte[] content = message.getContent();
@@ -389,7 +351,6 @@ public class CloudNetwork {
         return cloudStorage;
     }
 
-    //метод, который отправляет наш файл в облако, методу необходимо сообщить название отправляемого файла
     public void uploadFileOnCloud(String name) {
         CloudFile file = makeFile(name);
         try {
@@ -408,11 +369,9 @@ public class CloudNetwork {
         }
     }
 
-    //метод при помощи, которого создаём объект - "файл для отправки" по названию файла
     private CloudFile makeFile(String name) {
         byte[] content = new byte[0];
         try {
-            //считываем содержимое файла из хранилища, по его названию
             content = Files.readAllBytes(Paths.get("client/storage/" + name));
         } catch (IOException e) {
             e.printStackTrace();
@@ -590,17 +549,14 @@ public class ElementForTableView implements Serializable {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-//Блок отвачающий за авторизацию
 public class CloudAuthGateway extends ChannelInboundHandlerAdapter {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        //сперва должна пройти авторизация, чтобы двигаться дальше
         ctx.fireChannelRead(msg);
     }
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-        //действия при ошибках на сервере
     }
 }
 
@@ -646,7 +602,6 @@ public class CloudServer {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-//Блок для работы с данными, поступающими на сервер
 public class CloudServerHandler extends ChannelInboundHandlerAdapter {
 
     private String login;
@@ -662,7 +617,6 @@ public class CloudServerHandler extends ChannelInboundHandlerAdapter {
             if (msg == null)
                 return;
 
-            //самым первым запросом клиент попросит список файлов на сервере
             if (msg instanceof CloudFilesList) {
                 CloudFilesList message = (CloudFilesList) msg;
                 ArrayList<ElementForTableView> files = walkToLocalDirectory(message.getLogin());
@@ -673,7 +627,6 @@ public class CloudServerHandler extends ChannelInboundHandlerAdapter {
                 answer.setServerStorageList(files);
                 ctx.write(answer);
             }
-            //действия, если прилетела команда
             else if (msg instanceof CloudCommand) {
                 if(((CloudCommand) msg).getCommandName().equals("/downloadFile")){
                     CloudFile file = takeFile(((CloudCommand) msg).getFileName());
@@ -682,7 +635,6 @@ public class CloudServerHandler extends ChannelInboundHandlerAdapter {
                     Path path = Paths.get("server/storage/" + login + "/" + ((CloudCommand) msg).getFileName());
                     System.out.println(path);
                     Files.delete(path);
-                    //посылаем обновленный список файлов клиенту
                     CloudFilesList message = new CloudFilesList(login);
                     ArrayList<ElementForTableView> files = walkToLocalDirectory(login);
                     message.setServerStorageList(files);
@@ -690,7 +642,6 @@ public class CloudServerHandler extends ChannelInboundHandlerAdapter {
 
                 }
             }
-            //действия, если прилетел файл
             else if (msg instanceof CloudFile) {
                 System.out.println("file came on server " + ((CloudFile) msg).getName());
                 Path path = Paths.get("server/storage/" + login + "/" + ((CloudFile) msg).getName());
@@ -701,7 +652,6 @@ public class CloudServerHandler extends ChannelInboundHandlerAdapter {
                 } else {
                     makeFile(path, content);
                 }
-                //после того, как создали файл, сообщаем клиенту, что список файлов обновился
                 ArrayList<ElementForTableView> files = walkToLocalDirectory(login);
                 CloudFilesList answer = new CloudFilesList("cloudFilesList");
                 answer.setServerStorageList(files);
