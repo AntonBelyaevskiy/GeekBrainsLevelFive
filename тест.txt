@@ -1,0 +1,113 @@
+////////////////////////////////ОПИСАНИЕ////////////////////////////////
+
+Что сделано:
+1. Графический интерфейс приложения
+2. Передача файла из папки на клиенте, в папку на сервере (сериализация)
+3. Передача файла из папки на сервере, в папку на клиенте (сериализация)
+4. Удаление файла в локальной папке
+5. Удаление файла в папке на сервере
+
+Что ещё нужно сделать:
+1. Авторизацию (вход в приложение по логину и паролю)
+2. Регистрацию (занесение логина и пароля в БД)
+3. Обновление списка файлов при манипуляциях с файлами (копирование, удалении)
+4. Действия при копировании файла, если файл с таким именем на другой стороне уже есть (сейчас имеющийся файл удаляется, новый файл добавляется)
+5. Передачу больших файлов
+6. Реализовать DragAndPush
+7. Реализовать передачу при помощи собственного протокола
+
+////////////////////////////////СТРУКТУРА////////////////////////////////
+
+Классы на клиенте
+CloudController - управление клиентом
+CloudNetwork - структура клиента
+Main - запуск клиента
+
+Классы на сервере
+CloudAuthGateway - [блок сервера] для обработки авторизации
+CloudServer - структура сервера
+CloudServerHandler - [блок сервера] для обработки поступаемых данных
+Main - запускает сервер
+
+Общие классы
+CloudMessage - абстрактный общий класс для переправляемых данных
+CloudFileList - отвечает за передачу списка файлов
+CloudFile - отвечает за передачу файлов
+CloudCommand - отвечает за передачу команд
+CloudAuthorization - отвечает за передачу данных авторизации
+
+ElementForTableView - описывает строки, для отображении списка файлов
+(содержит три поля: название файла, размер файла, дата добавления файла)
+
+////////////////////////////////ПРОЕКТ////////////////////////////////
+
+//Контроллер для осуществления управления между логикой и представлением
+public class CloudController {
+
+    @FXML
+    public Button download;
+    @FXML
+    public Button refreshCloudFile;
+    @FXML
+    public Button deleteCloudFile;
+    @FXML
+    public Button refreshLocalFile;
+    @FXML
+    public Button deleteLocalFile;
+    @FXML
+    public Button upload;
+    @FXML
+    private CloudNetwork network;
+
+    @FXML
+    public VBox loginPane;
+    @FXML
+    public VBox cloudPane;
+    @FXML
+    public VBox registrationPane;
+
+    private Path pathToStorage;
+
+    @FXML
+    private TableView<ElementForTableView> localTableView;
+    @FXML
+    private TableColumn<ElementForTableView, String> localFileName;
+    @FXML
+    private TableColumn<ElementForTableView, String> localFileSize;
+    @FXML
+    private TableColumn<ElementForTableView, Date> localFileCreateDate;
+
+    private ObservableList<ElementForTableView> localItems = FXCollections.observableArrayList();
+
+    @FXML
+    private TableView<ElementForTableView> cloudTableView;
+    @FXML
+    private TableColumn<ElementForTableView, String> cloudFileName;
+    @FXML
+    private TableColumn<ElementForTableView, String> cloudFileSize;
+    @FXML
+    private TableColumn<ElementForTableView, Date> cloudFileCreateDate;
+
+    private ObservableList<ElementForTableView> cloudItems = FXCollections.observableArrayList();
+
+    private static final int PORT = 8189;
+    private static final String SERVER_IP = "localhost";
+
+    @FXML
+    public void initialize(){
+
+        localFileName.prefWidthProperty().bind(localTableView.widthProperty().divide(2.6));
+        localFileSize.prefWidthProperty().bind(localTableView.widthProperty().divide(4.2));
+        localFileCreateDate.prefWidthProperty().bind(localTableView.widthProperty().divide(2.7));
+
+        cloudFileName.prefWidthProperty().bind(cloudTableView.widthProperty().divide(2.6));
+        cloudFileSize.prefWidthProperty().bind(cloudTableView.widthProperty().divide(4.2));
+        cloudFileCreateDate.prefWidthProperty().bind(cloudTableView.widthProperty().divide(2.7));
+
+        download.setCursor(Cursor.HAND);
+        upload.setCursor(Cursor.HAND);
+        deleteCloudFile.setCursor(Cursor.HAND);
+        deleteLocalFile.setCursor(Cursor.HAND);
+        refreshCloudFile.setCursor(Cursor.HAND);
+        refreshLocalFile.setCursor(Cursor.HAND);
+    }
