@@ -111,3 +111,717 @@ public class CloudController {
         refreshCloudFile.setCursor(Cursor.HAND);
         refreshLocalFile.setCursor(Cursor.HAND);
     }
+
+
+
+    //прорисовываем информацию о хранящихся файлах на локальном репозитории, в TableView
+    private void drawLocalTableView() {
+        localItems.clear();//сперва очищаем список, чтобы при каждом обновлении списка файлы не дублировались
+
+        //пробигаемся по локальному репозиторию, чтобы собрать информацию о всех файлах
+        pathToStorage = Paths.get("client/storage");
+        walkToLocalDirectory(pathToStorage);
+
+        //заполняем ячейки TableView значениями о файлах
+        localTableView.itemsProperty().setValue(localItems);
+
+        //говорим, что именно и в какой ячейке отрисовать
+        localFileName.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getName()));
+        localFileSize.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getSize()));
+        localFileCreateDate.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue().getCreateDate()));
+    }
+
+    //прорисовываем информацию о хранящихся файлах на облаке, в TableView
+    //действия аналогичны прорисовки локального хранилища, только мы не пробигаемся по локальной папке,
+    //а запрашиваем данные у сервера
+    private void drawCloudTableView() {
+        cloudItems.clear();
+        cloudTableView.itemsProperty().setValue(cloudItems);
+
+        cloudItems.addAll(network.getCloudFilesStorage());
+
+        cloudFileName.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getName()));
+        cloudFileSize.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getSize()));
+        cloudFileCreateDate.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue().getCreateDate()));
+    }
+
+    //действия при нажатии на кнопку зарегистрироваться
+    public void goToRegistration(ActionEvent actionEvent) {
+        loginPane.setVisible(false);
+        loginPane.setManaged(false);
+        registrationPane.setVisible(true);
+        registrationPane.setManaged(true);
+    }
+
+    //действия при нажатии на кнопку войти
+    public void goToCloud(ActionEvent actionEvent) {
+        loginPane.setVisible(false);
+        loginPane.setManaged(false);
+        cloudPane.setVisible(true);
+        cloudPane.setManaged(true);
+
+        //устанавливаем соединение
+        connect();
+    }
+
+    //действия при нажатии кнопки назад при отображении регистрационного окна
+    public void backToLogin(ActionEvent actionEvent) {
+        registrationPane.setVisible(false);
+        registrationPane.setManaged(false);
+        loginPane.setVisible(true);
+        loginPane.setManaged(true);
+    }
+
+    //Подключаемся к серверу, если авторизация прошла успешно
+    public void connect() {
+        network = CloudNetwork.getNetwork();
+        network.run(PORT, SERVER_IP, "testLogin");
+
+        //прорисовываем оба TableView
+        drawLocalTableView();
+        drawCloudTableView();
+    }
+
+    //перебор файлов в локальном хранилище
+    private void walkToLocalDirectory(Path path) {
+        try {
+            Files.walkFileTree(path, new FileVisitor<Path>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                    //задать логику при обнаружении директории
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                    //когда находим файл, добавляем его в список файлов для отображения
+                    putFileInTableView(file);
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    //сюда прилетает файл, заносим его список элементов для отображения
+    //класс ElementForTableView содержит три поля: название, размер, время создания,
+    //создаем список для отображения с объектами этого класса
+    private void putFileInTableView(Path file) {
+        try {
+            String name = file.getFileName().toString();
+            String size = String.valueOf(file.toFile().length());
+            BasicFileAttributes attributes = Files.readAttributes(file, BasicFileAttributes.class);
+            Date createDate = new Date(attributes.creationTime().to(TimeUnit.MILLISECONDS));
+            ElementForTableView element = new ElementForTableView(name, size, createDate);
+            localItems.add(element);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    //метод при помощи, которого отправляем файл в облако
+    public void uploadFile(ActionEvent actionEvent) {
+        //получаем название файла, в зависимости от того, какой файл в TableView выбран
+        String name = getSelectedFileNameLocal(localTableView);
+        if (name == null) {
+            return;
+        }
+        network.uploadFileOnCloud(name);
+    }
+
+    //при загрузке файла с облака, отправляем команду и название файла
+    public void downloadFileFromCloud(ActionEvent actionEvent) {
+        String name = getSelectedFileNameCloud(cloudTableView);
+        if (name == null) {
+            return;
+        }
+        network.downloadFileFromCloud(name);
+    }
+
+    //метод для удаления файлов в локальном хранилище
+    public void deleteFileOnLocalStorage(ActionEvent actionEvent) {
+        //получаем название файла, в зависимости от того, какой файл в TableView выбран
+        String name = getSelectedFileNameLocal(localTableView);
+        if (name == null) {
+            return;
+        }
+        //удаляем файл по его названию
+        try {
+            System.out.println("сейчас будет удален файл " + Paths.get("client/storage/" + name));
+            Files.delete(Paths.get("client/storage/" + name));
+            drawLocalTableView();//обновляес содержимое TableView локального хранилища
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void deleteFileOnCloudStorage(ActionEvent actionEvent) {
+        String name = getSelectedFileNameCloud(cloudTableView);
+        if (name == null) {
+            return;
+        }
+
+        network.deleteFileOnCloudStorage(name);
+    }
+
+
+    private String getSelectedFileNameLocal(TableView<ElementForTableView> tableView) {
+
+        if (tableView == cloudTableView || tableView.getSelectionModel().getSelectedItem() == null) {
+            return null;
+        }
+        ElementForTableView element = tableView.getSelectionModel().getSelectedItem();
+        return element.getName();
+    }
+
+    private String getSelectedFileNameCloud(TableView<ElementForTableView> tableView) {
+
+        if (tableView == localTableView || tableView.getSelectionModel().getSelectedItem() == null) {
+            return null;
+        }
+        ElementForTableView element = tableView.getSelectionModel().getSelectedItem();
+        return element.getName();
+    }
+
+    public void updateLocalView(ActionEvent actionEvent) {
+        drawLocalTableView();
+    }
+
+    public void updateCloudView(ActionEvent actionEvent) {
+        drawCloudTableView();
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+//Класс в котором содержится бизнес-логика приложения
+public class CloudNetwork {
+
+    private volatile static CloudNetwork network;
+
+    private Socket socket;
+    private ObjectEncoderOutputStream encoder;
+    private ObjectDecoderInputStream decoder;
+
+    private ArrayList<ElementForTableView> cloudStorage;
+
+    private CloudNetwork() {
+    }
+
+    public static CloudNetwork getNetwork() {
+        if (network == null) {
+            synchronized (CloudNetwork.class) {
+                if (network == null) {
+                    network = new CloudNetwork();
+                }
+            }
+        }
+        return network;
+    }
+
+    public void run(final int port, final String ip, String login) {
+        try {
+            socket = new Socket(ip, port);
+            encoder = new ObjectEncoderOutputStream(socket.getOutputStream());
+            decoder = new ObjectDecoderInputStream(socket.getInputStream());
+
+            encoder.writeObject(new CloudFilesList(login));
+
+            //клиент в бесконечном цикле, будет слушать всё, что присылает ему сервер
+            //запускаем в отдельном потоке, чтобы не блокировать выполнение работы клиента
+            Thread authThread = new Thread(() -> {
+                try {
+                    while (true) {
+                        //логика клиента
+                        Object message = decoder.readObject();
+
+                        //если с сервера прилетает список файлов, обновляем список на клиенте
+                        if (message instanceof CloudFilesList)
+                            takeFilesListFromServer((CloudFilesList) message);
+
+                        if (message instanceof CloudCommand) {
+                            if (((CloudCommand) message).getCommandName().equals("/exit"))
+                                System.exit(0);
+                            else
+                                doCommand((CloudCommand) message);
+                        }
+                        if (message instanceof CloudFile)
+                            saveFile((CloudFile) message);
+                    }
+                } catch (IOException | ClassNotFoundException e) {
+                    e.printStackTrace();
+                } finally {
+                    try {
+                        socket.close();
+                        encoder.close();
+                        decoder.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                    System.out.println("disconnect");
+                }
+            });
+
+            //когда логинимся на клиенте, то сперва показываем актуальный список файлов в облаке
+            //после чего запускаем поток на прослушивание сервера
+            Object message = decoder.readObject();
+            if (message instanceof CloudFilesList) {
+                takeFilesListFromServer((CloudFilesList) message);
+            }
+            authThread.setDaemon(true);
+            authThread.start();
+
+        } catch (IOException | ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+    }
+
+    //получить список файлов в хранилище на сервере
+    private void takeFilesListFromServer(CloudFilesList message) {
+        System.out.println("пришел список файлов");
+        cloudStorage = message.getServerStorageList();
+    }
+
+    //обрабатываем команды, которые прилетают с сервера
+    private void doCommand(CloudCommand message) {
+        System.out.println(message.getCommandName());
+
+        if (message.getCommandName().equals("/updateList")) {
+            //сделать автоматическое обновление TableView при изменении его содержимого
+            //оповистить клиента о загрузке файла
+            System.out.println("список обновился");
+        }
+    }
+
+    //если из облака прилетает файл, то сохраняем его на локальном репозитории
+    private void saveFile(CloudFile message) {
+        Path path = Paths.get("client/storage/" + message.getName());
+        byte[] content = message.getContent();
+
+        if (Files.exists(path)) {
+            try {
+                Files.delete(path);
+                Files.write(path, content, StandardOpenOption.CREATE_NEW);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        } else {
+            try {
+                Files.write(path, content, StandardOpenOption.CREATE_NEW);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public ArrayList<ElementForTableView> getCloudFilesStorage() {
+        return cloudStorage;
+    }
+
+    //метод, который отправляет наш файл в облако, методу необходимо сообщить название отправляемого файла
+    public void uploadFileOnCloud(String name) {
+        CloudFile file = makeFile(name);
+        try {
+            encoder.writeObject(file);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void downloadFileFromCloud(String name) {
+        CloudCommand command = new CloudCommand("/downloadFile", name);
+        try {
+            encoder.writeObject(command);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    //метод при помощи, которого создаём объект - "файл для отправки" по названию файла
+    private CloudFile makeFile(String name) {
+        byte[] content = new byte[0];
+        try {
+            //считываем содержимое файла из хранилища, по его названию
+            content = Files.readAllBytes(Paths.get("client/storage/" + name));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return new CloudFile(name, content);
+    }
+
+    public void deleteFileOnCloudStorage(String name) {
+        CloudCommand command = new CloudCommand("/deleteFile", name);
+        try {
+            encoder.writeObject(command);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+public class Main extends Application {
+
+    private static final String FXML = "/fxml/cloud.fxml";
+    private static final String TITLE = "Cloud service";
+    private static final int WIDTH = 600;
+    private static final int HEIGHT = 500;
+
+    public static void main(String[] args) {
+        launch(args);
+    }
+
+    @Override
+    public void start(Stage primaryStage) throws Exception {
+        Parent root = FXMLLoader.load(getClass().getResource(FXML));
+        primaryStage.setTitle(TITLE);
+        Scene scene = new Scene(root, Main.WIDTH, Main.HEIGHT);
+        primaryStage.setMinHeight(500.0);
+        primaryStage.setMinWidth(600.0);
+        primaryStage.setScene(scene);
+
+        primaryStage.show();
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+public class CloudCommand extends CloudMessage {
+    private String commandName;
+    private String fileName;
+
+
+    public CloudCommand(String commandName) {
+        this.commandName = commandName;
+    }
+
+    public CloudCommand(String commandName, String fileName) {
+        this.commandName = commandName;
+        this.fileName = fileName;
+    }
+
+    public String getCommandName() {
+        return commandName;
+    }
+
+    public void setCommandName(String commandName) {
+        this.commandName = commandName;
+    }
+
+    public String getFileName() {
+        return fileName;
+    }
+
+    public void setFileName(String fileName) {
+        this.fileName = fileName;
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+public class CloudFile extends CloudMessage {
+    private String name;
+    private byte[] content;
+
+    public CloudFile(String name, byte[] content) {
+        this.name = name;
+        this.content = content;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public byte[] getContent() {
+        return content;
+    }
+
+    public void setContent(byte[] content) {
+        this.content = content;
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+public class CloudFilesList extends CloudMessage {
+
+    private String login;
+    private ArrayList<ElementForTableView> serverStorageList;
+
+    public CloudFilesList(String login) {
+        this.login = login;
+        serverStorageList = new ArrayList<>();
+    }
+
+    public String getLogin() {
+        return login;
+    }
+
+    public ArrayList<ElementForTableView> getServerStorageList() {
+        return serverStorageList;
+    }
+
+    public void setServerStorageList(ArrayList<ElementForTableView> serverStorageList) {
+        this.serverStorageList = serverStorageList;
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+public abstract class CloudMessage implements Serializable {
+
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+public class ElementForTableView implements Serializable {
+
+    private String name;
+    private String size;
+    private Date createDate;
+
+    public ElementForTableView(String name, String size, Date createDate) {
+        this.name = name;
+        this.size = size + " КБ";
+        this.createDate = createDate;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getSize() {
+        return size;
+    }
+
+    public void setSize(String size) {
+        this.size = size;
+    }
+
+    public Date getCreateDate() {
+        return createDate;
+    }
+
+    public void setCreateDate(Date createDate) {
+        this.createDate = createDate;
+    }
+
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+//Блок отвачающий за авторизацию
+public class CloudAuthGateway extends ChannelInboundHandlerAdapter {
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        //сперва должна пройти авторизация, чтобы двигаться дальше
+        ctx.fireChannelRead(msg);
+    }
+
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+        //действия при ошибках на сервере
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+public class CloudServer {
+
+    private static final int MAX_OBJ_SIZE = 1024 * 1024 * 100;
+    private static final int PORT = 8189;
+
+    public void run() {
+        EventLoopGroup mainGroup = new NioEventLoopGroup();
+        EventLoopGroup workGroup = new NioEventLoopGroup();
+
+        try {
+            ServerBootstrap boot = new ServerBootstrap();
+            boot.group(mainGroup, workGroup).channel(NioServerSocketChannel.class)
+                    .childHandler(new ChannelInitializer<SocketChannel>() {
+                        @Override
+                        protected void initChannel(SocketChannel socketChannel) throws Exception {
+                            socketChannel.pipeline().addLast(
+                                    new ObjectDecoder(MAX_OBJ_SIZE, ClassResolvers.cacheDisabled(null)),
+                                    new ObjectEncoder(),
+                                    new CloudAuthGateway(),
+                                    new CloudServerHandler()
+                            );
+                        }
+                    })
+                    .option(ChannelOption.SO_BACKLOG, 128)
+                    .option(ChannelOption.TCP_NODELAY, true)
+                    .childOption(ChannelOption.SO_KEEPALIVE, true);
+
+            ChannelFuture channelFuture = boot.bind(PORT).sync();
+            channelFuture.channel().closeFuture().sync();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } finally {
+            mainGroup.shutdownGracefully();
+            workGroup.shutdownGracefully();
+        }
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+//Блок для работы с данными, поступающими на сервер
+public class CloudServerHandler extends ChannelInboundHandlerAdapter {
+
+    private String login;
+
+    @Override
+    public void channelActive(ChannelHandlerContext ctx) throws Exception {
+        System.out.println("Client is connected...");
+    }
+
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        try {
+            if (msg == null)
+                return;
+
+            //самым первым запросом клиент попросит список файлов на сервере
+            if (msg instanceof CloudFilesList) {
+                CloudFilesList message = (CloudFilesList) msg;
+                ArrayList<ElementForTableView> files = walkToLocalDirectory(message.getLogin());
+                login = message.getLogin();
+                System.out.println("Ask storage's files");
+
+                CloudFilesList answer = new CloudFilesList(login);
+                answer.setServerStorageList(files);
+                ctx.write(answer);
+            }
+            //действия, если прилетела команда
+            else if (msg instanceof CloudCommand) {
+                if(((CloudCommand) msg).getCommandName().equals("/downloadFile")){
+                    CloudFile file = takeFile(((CloudCommand) msg).getFileName());
+                    ctx.write(file);
+                } else if(((CloudCommand) msg).getCommandName().equals("/deleteFile")){
+                    Path path = Paths.get("server/storage/" + login + "/" + ((CloudCommand) msg).getFileName());
+                    System.out.println(path);
+                    Files.delete(path);
+                    //посылаем обновленный список файлов клиенту
+                    CloudFilesList message = new CloudFilesList(login);
+                    ArrayList<ElementForTableView> files = walkToLocalDirectory(login);
+                    message.setServerStorageList(files);
+                    ctx.write(message);
+
+                }
+            }
+            //действия, если прилетел файл
+            else if (msg instanceof CloudFile) {
+                System.out.println("file came on server " + ((CloudFile) msg).getName());
+                Path path = Paths.get("server/storage/" + login + "/" + ((CloudFile) msg).getName());
+                byte[] content = ((CloudFile) msg).getContent();
+                if (Files.exists(path)) {
+                    Files.delete(path);
+                    makeFile(path, content);
+                } else {
+                    makeFile(path, content);
+                }
+                //после того, как создали файл, сообщаем клиенту, что список файлов обновился
+                ArrayList<ElementForTableView> files = walkToLocalDirectory(login);
+                CloudFilesList answer = new CloudFilesList("cloudFilesList");
+                answer.setServerStorageList(files);
+                ctx.write(answer);
+            }
+        } finally {
+            ReferenceCountUtil.release(msg);
+        }
+    }
+
+    private void makeFile(Path path, byte[] content) throws IOException {
+        Files.write(path, content, StandardOpenOption.CREATE_NEW);
+    }
+
+    private CloudFile takeFile(String fileName) {
+        Path path = Paths.get("server/storage/" + login + "/" + fileName);
+        byte[] content = new byte[(int) path.toFile().length()];
+        try {
+            content = Files.readAllBytes(path);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return new CloudFile(fileName, content);
+    }
+
+    @Override
+    public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
+        ctx.flush();
+    }
+
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+        cause.printStackTrace();
+        ctx.close();
+    }
+
+    private ArrayList<ElementForTableView> walkToLocalDirectory(String login) {
+        Path path = Paths.get("server/storage/" + login);
+        System.out.println(path);
+        final ArrayList<ElementForTableView> files = new ArrayList<>();
+        try {
+            Files.walkFileTree(path, new FileVisitor<Path>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                    //задать логику при обнаружении директории
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                    BasicFileAttributes attributes = Files.readAttributes(file, BasicFileAttributes.class);
+                    String name = file.getFileName().toString();
+                    String size = String.valueOf(file.toFile().length());
+                    Date createDate = new Date(attributes.creationTime().to(TimeUnit.MILLISECONDS));
+                    files.add(new ElementForTableView(name, size, createDate));
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return files;
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+public class Main {
+    public static void main(String[] args) {
+        new CloudServer().run();
+    }
+}
