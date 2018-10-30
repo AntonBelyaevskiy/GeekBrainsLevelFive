@@ -14,7 +14,7 @@ import io.netty.handler.codec.serialization.ObjectEncoder;
 
 public class CloudServer {
 
-    private static final int MAX_OBJ_SIZE = 1024 * 1024 * 100;
+    private static final int MAX_OBJ_SIZE = 1024 * 1024 * 30;
     private static final int PORT = 8189;
 
     public void run() {

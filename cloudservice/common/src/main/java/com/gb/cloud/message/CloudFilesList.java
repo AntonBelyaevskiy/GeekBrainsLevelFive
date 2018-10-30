@@ -14,10 +14,6 @@ public class CloudFilesList extends CloudMessage {
         serverStorageList = new ArrayList<>();
     }
 
-    public String getLogin() {
-        return login;
-    }
-
     public ArrayList<ElementForTableView> getServerStorageList() {
         return serverStorageList;
     }

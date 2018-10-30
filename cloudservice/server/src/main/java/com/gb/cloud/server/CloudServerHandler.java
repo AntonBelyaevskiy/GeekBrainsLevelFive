@@ -1,29 +1,25 @@
 package com.gb.cloud.server;
 
-import com.gb.cloud.message.CloudCommand;
-import com.gb.cloud.message.CloudFile;
-import com.gb.cloud.message.CloudFilesList;
+import com.gb.cloud.message.*;
+import com.gb.cloud.tableViewElements.ElementBuilder;
 import com.gb.cloud.tableViewElements.ElementForTableView;
+import com.gb.cloud.transfer.Crypt;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.util.ReferenceCountUtil;
 
+import java.io.BufferedInputStream;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.*;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
-import java.util.Date;
-import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
-//Блок для работы с данными, поступающими на сервер
 public class CloudServerHandler extends ChannelInboundHandlerAdapter {
 
     private String login;
 
-    @Override
-    public void channelActive(ChannelHandlerContext ctx) throws Exception {
-        System.out.println("Client is connected...");
-    }
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
@@ -31,39 +27,58 @@ public class CloudServerHandler extends ChannelInboundHandlerAdapter {
             if (msg == null)
                 return;
 
-            //самым первым запросом клиент попросит список файлов на сервере
-            if (msg instanceof CloudFilesList) {
-                CloudFilesList message = (CloudFilesList) msg;
-                ArrayList<ElementForTableView> files = walkToLocalDirectory(message.getLogin());
+            if (msg instanceof CloudAuthorization) {
+                CloudAuthorization message = (CloudAuthorization) msg;
                 login = message.getLogin();
-                System.out.println("Ask storage's files");
-
-                CloudFilesList answer = new CloudFilesList(login);
-                answer.setServerStorageList(files);
-                ctx.write(answer);
-            }
-            //действия, если прилетела команда
-            else if (msg instanceof CloudCommand) {
-                if(((CloudCommand) msg).getCommandName().equals("/downloadFile")){
-                    CloudFile file = takeFile(((CloudCommand) msg).getFileName());
-                    ctx.write(file);
-                } else if(((CloudCommand) msg).getCommandName().equals("/deleteFile")){
-                    Path path = Paths.get("server/storage/" + login + "/" + ((CloudCommand) msg).getFileName());
-                    System.out.println(path);
-                    Files.delete(path);
-                    //посылаем обновленный список файлов клиенту
-                    CloudFilesList message = new CloudFilesList(login);
-                    ArrayList<ElementForTableView> files = walkToLocalDirectory(login);
-                    message.setServerStorageList(files);
-                    ctx.write(message);
-
+                CloudCommand admitUser = new CloudCommand("/allowToEnter");
+                if (message.getStatus().equals("/create")) {
+                    //создаем папку для юзера
+                    Files.createDirectories(Paths.get("server/storage/" + login));
+                    //отправляем команду, чтобы юзера впустили в облако
+                    ctx.write(admitUser);
+                    sendFileListToClient(ctx);
+                }
+                if (message.getStatus().equals("/enter")) {
+                    //отправляем команду, чтобы юзера впустили в облако
+                    ctx.write(admitUser);
+                    sendFileListToClient(ctx);
                 }
             }
-            //действия, если прилетел файл
-            else if (msg instanceof CloudFile) {
-                System.out.println("file came on server " + ((CloudFile) msg).getName());
-                Path path = Paths.get("server/storage/" + login + "/" + ((CloudFile) msg).getName());
-                byte[] content = ((CloudFile) msg).getContent();
+
+            //действия, если прилетела команда
+            else if (msg instanceof CloudCommand) {
+                Path path = Paths.get("server/storage/" + login + "/" + ((CloudCommand) msg).getFileName());
+                switch (((CloudCommand) msg).getCommandName()) {
+                    case "/downloadFile":
+                        long size = Files.size(path);
+                        int partOfFile = 1024 * 500 ;
+                        int parts = (int) Math.ceil((double) (size / partOfFile));
+
+                        if (size > partOfFile) {
+                            sendLargeFile(path, parts, ctx); //отправляем частями
+                        } else {
+                            CloudSmallFile file = takeFile(((CloudCommand) msg).getFileName());
+                            ctx.write(file);
+                        }
+                        break;
+                    case "/deleteFile":
+                        System.out.println(path);
+                        Files.delete(path);
+                        sendFileListToClient(ctx);
+                        break;
+                    case "/busyLogin":
+                        ctx.write(msg);
+                        break;
+                    case "/wrongLoginOrPassword":
+                        ctx.write(msg);
+                        break;
+                }
+            }
+            //действия, если прилетел маленький файл
+            else if (msg instanceof CloudSmallFile) {
+                System.out.println("file came on server " + ((CloudSmallFile) msg).getName());
+                Path path = Paths.get("server/storage/" + login + "/" + ((CloudSmallFile) msg).getName());
+                byte[] content = ((CloudSmallFile) msg).getContent();
                 if (Files.exists(path)) {
                     Files.delete(path);
                     makeFile(path, content);
@@ -71,21 +86,48 @@ public class CloudServerHandler extends ChannelInboundHandlerAdapter {
                     makeFile(path, content);
                 }
                 //после того, как создали файл, сообщаем клиенту, что список файлов обновился
-                ArrayList<ElementForTableView> files = walkToLocalDirectory(login);
-                CloudFilesList answer = new CloudFilesList("cloudFilesList");
-                answer.setServerStorageList(files);
-                ctx.write(answer);
+                sendFileListToClient(ctx);
+            }
+            //действия, если прилетел большой файл
+            else if (msg instanceof CloudLargeFile) {
+                System.out.println("file came on server "
+                        + ((CloudLargeFile) msg).getName()
+                        + " file part: "
+                        + ((CloudLargeFile) msg).getPartNumber());
+                Path path = Paths.get("server/storage/" + login + "/" + ((CloudLargeFile) msg).getName());
+
+                if (((CloudLargeFile) msg).getPartNumber() == 1) {
+                    byte[] content = ((CloudLargeFile) msg).getContent();
+                    if (Files.exists(path)) {
+                        Files.delete(path);
+                        makeFile(path, content);
+                    } else {
+                        makeFile(path, content);
+                    }
+                } else {
+                    byte[] content = ((CloudLargeFile) msg).getContent();
+                    Files.write(path, content, StandardOpenOption.APPEND);
+                }
+                sendFileListToClient(ctx);
+
             }
         } finally {
             ReferenceCountUtil.release(msg);
         }
     }
 
+    private void sendFileListToClient(ChannelHandlerContext ctx) {
+        CloudFilesList message = new CloudFilesList(login);
+        ArrayList<ElementForTableView> files = walkToLocalDirectory(login);
+        message.setServerStorageList(files);
+        ctx.write(message);
+    }
+
     private void makeFile(Path path, byte[] content) throws IOException {
         Files.write(path, content, StandardOpenOption.CREATE_NEW);
     }
 
-    private CloudFile takeFile(String fileName) {
+    private CloudSmallFile takeFile(String fileName) {
         Path path = Paths.get("server/storage/" + login + "/" + fileName);
         byte[] content = new byte[(int) path.toFile().length()];
         try {
@@ -93,7 +135,53 @@ public class CloudServerHandler extends ChannelInboundHandlerAdapter {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        return new CloudFile(fileName, content);
+        return new CloudSmallFile(fileName, content);
+    }
+
+    private void sendLargeFile(Path path, int parts, ChannelHandlerContext ctx) {
+
+        int part = 1;
+        int partSizeOfFile = 1024 * 500; //0.5 мегабайт
+        int currentPlaceInArray = 0;
+        int read;
+        byte[] current = new byte[partSizeOfFile];
+
+        try (InputStream fileForeSend = new BufferedInputStream(new FileInputStream(String.valueOf(path)))) {
+
+            do {
+                read = fileForeSend.read();
+                if (read != -1) {
+                    current[currentPlaceInArray++] = (byte) read;
+
+                    if (currentPlaceInArray == partSizeOfFile) {
+                        CloudLargeFile file = new CloudLargeFile(
+                                path.getFileName().toString(),
+                                current,
+                                parts,
+                                part);
+                        ctx.write(file);
+
+                        currentPlaceInArray = 0;
+                        System.out.println("ser midl part " + part);
+                        part++;
+                    }
+                }
+                else {
+                    byte[] lastPart = new byte[currentPlaceInArray];
+                    System.arraycopy(current,0,lastPart,0,currentPlaceInArray);
+                    CloudLargeFile file = new CloudLargeFile(
+                            path.getFileName().toString(),
+                            lastPart,
+                            parts,
+                            part);
+                    ctx.write(file);
+                    System.out.println("ser end part " + part);
+                }
+            } while (read != -1);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -108,37 +196,11 @@ public class CloudServerHandler extends ChannelInboundHandlerAdapter {
     }
 
     private ArrayList<ElementForTableView> walkToLocalDirectory(String login) {
-        Path path = Paths.get("server/storage/" + login);
-        System.out.println(path);
-        final ArrayList<ElementForTableView> files = new ArrayList<>();
+        ArrayList<ElementForTableView> files = new ArrayList<>();
         try {
-            Files.walkFileTree(path, new FileVisitor<Path>() {
-                @Override
-                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                    //задать логику при обнаружении директории
-                    return FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                    BasicFileAttributes attributes = Files.readAttributes(file, BasicFileAttributes.class);
-                    String name = file.getFileName().toString();
-                    String size = String.valueOf(file.toFile().length());
-                    Date createDate = new Date(attributes.creationTime().to(TimeUnit.MILLISECONDS));
-                    files.add(new ElementForTableView(name, size, createDate));
-                    return FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
-                    return FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-                    return FileVisitResult.CONTINUE;
-                }
-            });
+            files = (ArrayList<ElementForTableView>) Files.list(Paths.get("server/storage/" + login))
+                    .map(ElementBuilder::buildElement)
+                    .collect(Collectors.toList());
         } catch (IOException e) {
             e.printStackTrace();
         }

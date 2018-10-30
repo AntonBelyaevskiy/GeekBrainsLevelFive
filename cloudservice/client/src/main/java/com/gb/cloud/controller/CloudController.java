@@ -1,6 +1,8 @@
 package com.gb.cloud.controller;
 
+import com.gb.cloud.Main;
 import com.gb.cloud.network.CloudNetwork;
+import com.gb.cloud.tableViewElements.ElementBuilder;
 import com.gb.cloud.tableViewElements.ElementForTableView;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
@@ -9,18 +11,20 @@ import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.scene.Cursor;
-import javafx.scene.control.Button;
-import javafx.scene.control.TableColumn;
-import javafx.scene.control.TableView;
+import javafx.scene.control.*;
+import javafx.scene.input.Dragboard;
+import javafx.scene.input.TransferMode;
 import javafx.scene.layout.VBox;
+import javafx.scene.text.Text;
+import javafx.stage.FileChooser;
 
-import java.io.IOException;
+import java.io.*;
 import java.nio.file.*;
-import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.Date;
-import java.util.concurrent.TimeUnit;
+import java.util.List;
+import java.util.stream.Collectors;
 
-//Контроллер для управления логикой и представлением
 public class CloudController {
 
     @FXML
@@ -30,11 +34,26 @@ public class CloudController {
     @FXML
     public Button deleteCloudFile;
     @FXML
-    public Button refreshLocalFile;
-    @FXML
     public Button deleteLocalFile;
     @FXML
     public Button upload;
+    @FXML
+    public TextField loginRegisterTextField;
+    @FXML
+    public PasswordField passwordRegisterTextField;
+    @FXML
+    public TextField loginTextField;
+    @FXML
+    public PasswordField passwordTextField;
+    @FXML
+    public Text serviceMessage;
+    @FXML
+    public Button fileChooser;
+    @FXML
+    public Button refreshLocalFile;
+    @FXML
+    public Button exitFromCloud;
+
     @FXML
     private CloudNetwork network;
 
@@ -44,8 +63,6 @@ public class CloudController {
     public VBox cloudPane;
     @FXML
     public VBox registrationPane;
-
-    private Path pathToStorage;
 
     @FXML
     private TableView<ElementForTableView> localTableView;
@@ -57,6 +74,7 @@ public class CloudController {
     private TableColumn<ElementForTableView, Date> localFileCreateDate;
 
     private ObservableList<ElementForTableView> localItems = FXCollections.observableArrayList();
+    private static ArrayList<ElementForTableView> cloudStorage = new ArrayList<>();
 
     @FXML
     private TableView<ElementForTableView> cloudTableView;
@@ -69,19 +87,19 @@ public class CloudController {
 
     private ObservableList<ElementForTableView> cloudItems = FXCollections.observableArrayList();
 
-    private static final int PORT = 8189;
-    private static final String SERVER_IP = "localhost";
-
     @FXML
-    public void initialize(){
+    public void initialize() {
 
-        localFileName.prefWidthProperty().bind(localTableView.widthProperty().divide(2.6));
-        localFileSize.prefWidthProperty().bind(localTableView.widthProperty().divide(4.2));
-        localFileCreateDate.prefWidthProperty().bind(localTableView.widthProperty().divide(2.7));
+        initDragAndDropFile();
 
-        cloudFileName.prefWidthProperty().bind(cloudTableView.widthProperty().divide(2.6));
-        cloudFileSize.prefWidthProperty().bind(cloudTableView.widthProperty().divide(4.2));
-        cloudFileCreateDate.prefWidthProperty().bind(cloudTableView.widthProperty().divide(2.7));
+        //настройка визуальных эффектов для ГПИ
+        localFileName.prefWidthProperty().bind(localTableView.widthProperty().divide(2.0));
+        localFileSize.prefWidthProperty().bind(localTableView.widthProperty().divide(5.8));
+        localFileCreateDate.prefWidthProperty().bind(localTableView.widthProperty().divide(3.1));
+
+        cloudFileName.prefWidthProperty().bind(cloudTableView.widthProperty().divide(2.0));
+        cloudFileSize.prefWidthProperty().bind(cloudTableView.widthProperty().divide(5.8));
+        cloudFileCreateDate.prefWidthProperty().bind(cloudTableView.widthProperty().divide(3.1));
 
         download.setCursor(Cursor.HAND);
         upload.setCursor(Cursor.HAND);
@@ -89,129 +107,89 @@ public class CloudController {
         deleteLocalFile.setCursor(Cursor.HAND);
         refreshCloudFile.setCursor(Cursor.HAND);
         refreshLocalFile.setCursor(Cursor.HAND);
+        fileChooser.setCursor(Cursor.HAND);
+        exitFromCloud.setCursor(Cursor.HAND);
+
+        //progressBar.progressProperty().setValue(0);
     }
 
+    //////////БЛОК геттеров и сеттеров
 
-
-    //прорисовываем информацию о хранящихся файлах на локальном репозитории, в TableView
-    private void drawLocalTableView() {
-        localItems.clear();//сперва очищаем список, чтобы при каждом обновлении списка файлы не дублировались
-
-        //пробигаемся по локальному репозиторию, чтобы собрать информацию о всех файлах
-        pathToStorage = Paths.get("client/storage");
-        walkToLocalDirectory(pathToStorage);
-
-        //заполняем ячейки TableView значениями о файлах
-        localTableView.itemsProperty().setValue(localItems);
-
-        //говорим, что именно и в какой ячейке отрисовать
-        localFileName.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getName()));
-        localFileSize.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getSize()));
-        localFileCreateDate.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue().getCreateDate()));
+    public static ArrayList<ElementForTableView> getCloudStorage() {
+        return cloudStorage;
     }
 
-    //прорисовываем информацию о хранящихся файлах на облаке, в TableView
-    //действия аналогичны прорисовки локального хранилища, только мы не пробигаемся по локальной папке,
-    //а запрашиваем данные у сервера
-    private void drawCloudTableView() {
-        cloudItems.clear();
-        cloudTableView.itemsProperty().setValue(cloudItems);
+    public static void setCloudStorage(ArrayList<ElementForTableView> cloudStorage) {
+        CloudController.cloudStorage = cloudStorage;
+    }
 
-        cloudItems.addAll(network.getCloudFilesStorage());
+    //////////БЛОК обработка кнопок окна приветствия
 
-        cloudFileName.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getName()));
-        cloudFileSize.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getSize()));
-        cloudFileCreateDate.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue().getCreateDate()));
+    //действия при нажатии на кнопку войти
+    public void goToCloud(ActionEvent actionEvent) {
+        //если поля не заполнены выдать сообщение о необходимости заполнения
+        if (loginTextField.getText().trim().equals("")) {
+            serviceMessage.setText("Вы не ввели логин");
+            return;
+        }
+        if (passwordTextField.getText().trim().equals("")) {
+            serviceMessage.setText("Вы не ввели пароль");
+            return;
+        }
+
+        connect();
+        network.sendAuthorizationMsg(loginTextField.getText(), passwordTextField.getText(), "/enter");
     }
 
     //действия при нажатии на кнопку зарегистрироваться
     public void goToRegistration(ActionEvent actionEvent) {
-        loginPane.setVisible(false);
-        loginPane.setManaged(false);
-        registrationPane.setVisible(true);
-        registrationPane.setManaged(true);
-    }
-
-    //действия при нажатии на кнопку войти
-    public void goToCloud(ActionEvent actionEvent) {
-        loginPane.setVisible(false);
-        loginPane.setManaged(false);
-        cloudPane.setVisible(true);
-        cloudPane.setManaged(true);
-
-        //устанавливаем соединение
-        connect();
+        changeScene(loginPane, registrationPane);
+        loginTextField.clear();
+        passwordTextField.clear();
     }
 
     //действия при нажатии кнопки назад при отображении регистрационного окна
     public void backToLogin(ActionEvent actionEvent) {
-        registrationPane.setVisible(false);
-        registrationPane.setManaged(false);
-        loginPane.setVisible(true);
-        loginPane.setManaged(true);
+        changeScene(registrationPane, loginPane);
+        loginRegisterTextField.clear();
+        passwordRegisterTextField.clear();
     }
 
-    //Подключаемся к серверу, если авторизация прошла успешно
-    public void connect() {
-        network = CloudNetwork.getNetwork();
-        network.run(PORT, SERVER_IP, "testLogin");
-
-        //прорисовываем оба TableView
-        drawLocalTableView();
-        drawCloudTableView();
+    private void changeScene(VBox hidePane, VBox showPane) {
+        hidePane.setVisible(false);
+        hidePane.setManaged(false);
+        showPane.setVisible(true);
+        showPane.setManaged(true);
+        serviceMessage.setText("");
     }
 
-    //перебор файлов в локальном хранилище
-    private void walkToLocalDirectory(Path path) {
-        try {
-            Files.walkFileTree(path, new FileVisitor<Path>() {
-                @Override
-                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                    //задать логику при обнаружении директории
-                    return FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                    //когда находим файл, добавляем его в список файлов для отображения
-                    putFileInTableView(file);
-                    return FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
-                    return FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-                    return FileVisitResult.CONTINUE;
-                }
-            });
-        } catch (IOException e) {
-            e.printStackTrace();
+    public void registerInCloud(ActionEvent actionEvent) {
+        if (loginRegisterTextField.getText().startsWith(" ")) {
+            serviceMessage.setText("Логин не может начинаться с пробела");
+            return;
         }
-
-    }
-
-    //сюда прилетает файл, заносим его список элементов для отображения
-    //класс ElementForTableView содержит три поля: название, размер, время создания,
-    //создаем список для отображения с объектами этого класса
-    private void putFileInTableView(Path file) {
-        try {
-            String name = file.getFileName().toString();
-            String size = String.valueOf(file.toFile().length());
-            BasicFileAttributes attributes = Files.readAttributes(file, BasicFileAttributes.class);
-            Date createDate = new Date(attributes.creationTime().to(TimeUnit.MILLISECONDS));
-            ElementForTableView element = new ElementForTableView(name, size, createDate);
-            localItems.add(element);
-        } catch (IOException e) {
-            e.printStackTrace();
+        if (passwordRegisterTextField.getText().startsWith(" ")) {
+            serviceMessage.setText("Пароль не может начинаться с пробела");
+            return;
         }
+        if (loginRegisterTextField.getText().trim().equals("")) {
+            serviceMessage.setText("Вы не ввели логин");
+            return;
+        }
+        if (passwordRegisterTextField.getText().trim().equals("")) {
+            serviceMessage.setText("Вы не ввели пароль");
+            return;
+        }
+        connect();
+        network.sendAuthorizationMsg(loginRegisterTextField.getText(), passwordRegisterTextField.getText(), "/create");
     }
+
+
+    //////////БЛОК обработка кнопок при работе с файлами
 
     //метод при помощи, которого отправляем файл в облако
     public void uploadFile(ActionEvent actionEvent) {
+
         //получаем название файла, в зависимости от того, какой файл в TableView выбран
         String name = getSelectedFileNameLocal(localTableView);
         if (name == null) {
@@ -240,7 +218,7 @@ public class CloudController {
         try {
             System.out.println("сейчас будет удален файл " + Paths.get("client/storage/" + name));
             Files.delete(Paths.get("client/storage/" + name));
-            drawLocalTableView();//обновляес содержимое TableView локального хранилища
+            drawLocalTableView();//обновляем содержимое TableView локального хранилища
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -251,11 +229,75 @@ public class CloudController {
         if (name == null) {
             return;
         }
-
         network.deleteFileOnCloudStorage(name);
     }
 
 
+    //////////БЛОК вспомогательные методы
+
+    //Подключаемся к серверу, если авторизация прошла успешно
+    private void connect() {
+        network = CloudNetwork.getNetwork(this);
+        network.run();
+    }
+
+    //прорисовываем информацию о хранящихся файлах на локальном репозитории, в TableView
+    public void drawLocalTableView() {
+        localItems.clear();//сперва очищаем список, чтобы при каждом обновлении списка файлы не дублировались
+
+        //пробигаемся по локальному репозиторию, чтобы собрать информацию о всех файлах
+        Path pathToStorage = Paths.get("client/storage");
+        walkToLocalDirectory(pathToStorage);
+
+        //заполняем ячейки TableView значениями о файлах
+        localTableView.itemsProperty().setValue(localItems);
+
+        //говорим, что именно и в какой ячейке отрисовать
+        localFileName.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getName()));
+        localFileSize.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getSize()));
+        localFileCreateDate.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue().getCreateDate()));
+    }
+
+    //прорисовываем информацию о хранящихся файлах на облаке, в TableView
+    //действия аналогичны прорисовки локального хранилища, только мы не пробигаемся по локальной папке,
+    //а запрашиваем данные у сервера
+    public void drawCloudTableView() {
+        cloudItems.clear();
+        cloudTableView.itemsProperty().setValue(cloudItems);
+
+        cloudItems.addAll(network.getCloudFilesStorage());
+
+        cloudFileName.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getName()));
+        cloudFileSize.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getSize()));
+        cloudFileCreateDate.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue().getCreateDate()));
+    }
+
+    //перебор файлов в локальном хранилище
+    private void walkToLocalDirectory(Path path) {
+        List<ElementForTableView> files = null;
+        try {
+            files = Files.list(path).map(ElementBuilder::buildElement).collect(Collectors.toList());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        if (files != null) {
+            localItems.addAll(files);
+        }
+    }
+
+    public void showCloudWindowAfterLogin() {
+        loginPane.setVisible(false);
+        loginPane.setManaged(false);
+        registrationPane.setVisible(false);
+        registrationPane.setManaged(false);
+        cloudPane.setVisible(true);
+        cloudPane.setManaged(true);
+        serviceMessage.setVisible(false);
+        serviceMessage.setManaged(false);
+
+    }
+
+    //имя выбранного файла в локальном хранилище
     private String getSelectedFileNameLocal(TableView<ElementForTableView> tableView) {
 
         if (tableView == cloudTableView || tableView.getSelectionModel().getSelectedItem() == null) {
@@ -265,6 +307,7 @@ public class CloudController {
         return element.getName();
     }
 
+    //имя выбранного файла в облачном хранилище
     private String getSelectedFileNameCloud(TableView<ElementForTableView> tableView) {
 
         if (tableView == localTableView || tableView.getSelectionModel().getSelectedItem() == null) {
@@ -274,11 +317,68 @@ public class CloudController {
         return element.getName();
     }
 
-    public void updateLocalView(ActionEvent actionEvent) {
+    public void chooseFile(ActionEvent actionEvent) {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Выберите файл");
+        File file = fileChooser.showOpenDialog(Main.getStage());
+        if (file == null) {
+            return;
+        }
+        Path src = file.toPath();
+        Path dest = Paths.get("client/storage/" + file.getName());
+        try {
+            Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
         drawLocalTableView();
     }
 
-    public void updateCloudView(ActionEvent actionEvent) {
+    private void initDragAndDropFile() {
+        localTableView.setOnDragOver(event -> {
+            if (event.getGestureSource() != localTableView && event.getDragboard().hasFiles()) {
+                event.acceptTransferModes(TransferMode.COPY_OR_MOVE);
+            }
+            event.consume();
+        });
+
+        localTableView.setOnDragDropped(event -> {
+            Dragboard db = event.getDragboard();
+            boolean success = false;
+            if (db.hasFiles()) {
+                for (File file : db.getFiles()) {
+                    Path pathSrc = Paths.get(file.getAbsolutePath());
+                    Path pathDes = Paths.get("client/storage/" + file.getName());
+                    try {
+                        Files.copy(pathSrc, pathDes, StandardCopyOption.REPLACE_EXISTING);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+                success = true;
+            }
+            event.setDropCompleted(success);
+            event.consume();
+            drawLocalTableView();
+        });
+    }
+
+    public void updateCloudView() {
         drawCloudTableView();
+    }
+
+    public void updateLocalView() { drawLocalTableView();
+    }
+
+    public void exit() {
+        cloudPane.setVisible(false);
+        cloudPane.setManaged(false);
+        loginPane.setVisible(true);
+        loginPane.setManaged(true);
+        loginTextField.clear();
+        passwordTextField.clear();
+        serviceMessage.setVisible(true);
+        serviceMessage.setManaged(true);
+        network.disconnect();
     }
 }

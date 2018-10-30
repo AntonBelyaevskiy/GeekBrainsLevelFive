@@ -15,6 +15,7 @@
 <?import javafx.scene.control.PasswordField?>
 <?import javafx.scene.layout.HBox?>
 
+<?import javafx.scene.text.Text?>
 <BorderPane stylesheets="@../css/mystyle.css"
             xmlns="http://javafx.com/javafx/8.0.171"
             xmlns:fx="http://javafx.com/fxml/1"
@@ -27,29 +28,49 @@
                         <Insets bottom="20.0"/>
                     </VBox.margin>
                     <graphic>
-                        <ImageView >
+                        <ImageView>
                             <Image url="/labels/cloudstorage.png"/>
                         </ImageView>
                     </graphic>
                 </Label>
-                <TextField maxWidth="200" prefWidth="200.0" promptText="Логин:" focusTraversable="false">
+
+                <HBox maxWidth="250" prefWidth="250.0" alignment="CENTER">
+                    <Label text="Логин:" prefWidth="50">
+                        <HBox.margin>
+                            <Insets top="1.0"/>
+                        </HBox.margin>
+                    </Label>
+                    <TextField fx:id="loginTextField" prefWidth="180" promptText="введите логин"/>
+
                     <VBox.margin>
                         <Insets bottom="10.0"/>
                     </VBox.margin>
-                </TextField>
-                <PasswordField maxWidth="200" prefWidth="200.0" promptText="Пароль:" focusTraversable="false">
+                </HBox>
+
+                <HBox maxWidth="250" prefWidth="250.0" alignment="CENTER">
+                    <Label text="Пароль:" prefWidth="50">
+                        <HBox.margin>
+                            <Insets top="1.0"/>
+                        </HBox.margin>
+                    </Label>
+                    <PasswordField fx:id="passwordTextField" prefWidth="180" promptText="введите пароль"
+                                   onAction="#goToCloud"/>
                     <VBox.margin>
                         <Insets bottom="10.0"/>
                     </VBox.margin>
-                </PasswordField>
+                </HBox>
+
+
                 <HBox alignment="CENTER" prefHeight="45.0" prefWidth="600.0">
                     <children>
-                        <Button mnemonicParsing="false" text="Войти" styleClass="buttons" style="-fx-border-color: #7278F1" onAction="#goToCloud">
+                        <Button mnemonicParsing="false" text="Войти" styleClass="buttons"
+                                style="-fx-border-color: #7278F1" onAction="#goToCloud">
                             <HBox.margin>
                                 <Insets right="5.0"/>
                             </HBox.margin>
                         </Button>
-                        <Button mnemonicParsing="false" text="Регистрация" styleClass="buttons" style="-fx-border-color: #7278F1" onAction="#goToRegistration">
+                        <Button mnemonicParsing="false" text="Регистрация" styleClass="buttons"
+                                style="-fx-border-color: #7278F1" onAction="#goToRegistration">
                             <HBox.margin>
                                 <Insets left="5.0"/>
                             </HBox.margin>
@@ -63,7 +84,7 @@
     <center>
         <VBox fx:id="cloudPane" visible="false" managed="false">
             <children>
-                <BorderPane VBox.vgrow="ALWAYS">
+                <BorderPane VBox.vgrow="ALWAYS" prefHeight="400">
                     <left>
                         <VBox BorderPane.alignment="CENTER">
                             <children>
@@ -73,9 +94,10 @@
                                         <Insets top="5.0"/>
                                     </VBox.margin>
                                 </Label>
-                                <Button fx:id="download" mnemonicParsing="false" styleClass="buttons" onAction="#downloadFileFromCloud">
+                                <Button fx:id="download" mnemonicParsing="false" styleClass="buttons"
+                                        onAction="#downloadFileFromCloud">
                                     <VBox.margin>
-                                        <Insets bottom="10.0" left="20.0" right="10.0" top="10.0"/>
+                                        <Insets bottom="5.0" left="20.0" right="10.0" top="5.0"/>
                                     </VBox.margin>
                                     <graphic>
                                         <ImageView fitHeight="40" fitWidth="40">
@@ -89,7 +111,7 @@
                                 <Button fx:id="deleteCloudFile" mnemonicParsing="false" styleClass="buttons"
                                         onAction="#deleteFileOnCloudStorage">
                                     <VBox.margin>
-                                        <Insets bottom="10.0" left="20.0" right="10.0" top="10.0"/>
+                                        <Insets bottom="5.0" left="20.0" right="10.0" top="5.0"/>
                                     </VBox.margin>
                                     <graphic>
                                         <ImageView fitHeight="40" fitWidth="40">
@@ -100,9 +122,11 @@
                                         <Tooltip text="Удалить из облака"/>
                                     </tooltip>
                                 </Button>
-                                <Button fx:id="refreshCloudFile" mnemonicParsing="false" styleClass="buttons" onAction="#updateCloudView">
+
+                                <Button fx:id="refreshCloudFile" mnemonicParsing="false" styleClass="buttons"
+                                        onAction="#updateCloudView">
                                     <VBox.margin>
-                                        <Insets bottom="10.0" left="20.0" right="10.0" top="10.0"/>
+                                        <Insets bottom="5.0" left="20.0" right="10.0" top="5.0"/>
                                     </VBox.margin>
                                     <graphic>
                                         <ImageView fitHeight="40" fitWidth="40">
@@ -113,6 +137,21 @@
                                         <Tooltip text="Обновить"/>
                                     </tooltip>
                                 </Button>
+                                <Button fx:id="exitFromCloud" mnemonicParsing="false" styleClass="buttons"
+                                        onAction="#exit">
+                                    <VBox.margin>
+                                        <Insets bottom="5.0" left="20.0" right="10.0" top="5.0"/>
+                                    </VBox.margin>
+                                    <graphic>
+                                        <ImageView fitHeight="40" fitWidth="40">
+                                            <Image url="/buttons/exit.png"/>
+                                        </ImageView>
+                                    </graphic>
+                                    <tooltip>
+                                        <Tooltip text="Выйти"/>
+                                    </tooltip>
+                                </Button>
+
                             </children>
                         </VBox>
                     </left>
@@ -134,7 +173,7 @@
                     </center>
                 </BorderPane>
 
-                <BorderPane VBox.vgrow="ALWAYS">
+                <BorderPane VBox.vgrow="ALWAYS" prefHeight="400">
                     <left>
                         <VBox BorderPane.alignment="CENTER">
                             <children>
@@ -142,9 +181,10 @@
                                        text="Локальный диск" textAlignment="CENTER" VBox.vgrow="ALWAYS">
 
                                 </Label>
-                                <Button fx:id="upload" mnemonicParsing="false" styleClass="buttons" onAction="#uploadFile">
+                                <Button fx:id="upload" mnemonicParsing="false" styleClass="buttons"
+                                        onAction="#uploadFile">
                                     <VBox.margin>
-                                        <Insets bottom="10.0" left="20.0" right="10.0" top="10.0"/>
+                                        <Insets bottom="5.0" left="20.0" right="10.0" top="5.0"/>
                                     </VBox.margin>
                                     <graphic>
                                         <ImageView fitHeight="40" fitWidth="40">
@@ -158,7 +198,7 @@
                                 <Button fx:id="deleteLocalFile" mnemonicParsing="false" styleClass="buttons"
                                         onAction="#deleteFileOnLocalStorage">
                                     <VBox.margin>
-                                        <Insets bottom="10.0" left="20.0" right="10.0" top="10.0"/>
+                                        <Insets bottom="5.0" left="20.0" right="10.0" top="5.0"/>
                                     </VBox.margin>
                                     <graphic>
                                         <ImageView fitHeight="40" fitWidth="40">
@@ -169,9 +209,24 @@
                                         <Tooltip text="Удалить на локальном диске"/>
                                     </tooltip>
                                 </Button>
-                                <Button fx:id="refreshLocalFile" mnemonicParsing="false" styleClass="buttons" onAction="#updateLocalView">
+                                <Button fx:id="fileChooser" mnemonicParsing="false" styleClass="buttons"
+                                        onAction="#chooseFile">
                                     <VBox.margin>
-                                        <Insets bottom="10.0" left="20.0" right="10.0" top="10.0"/>
+                                        <Insets bottom="5.0" left="20.0" right="10.0" top="5.0"/>
+                                    </VBox.margin>
+                                    <graphic>
+                                        <ImageView fitHeight="40" fitWidth="40">
+                                            <Image url="/buttons/chooser.png"/>
+                                        </ImageView>
+                                    </graphic>
+                                    <tooltip>
+                                        <Tooltip text="Загрузить файл"/>
+                                    </tooltip>
+                                </Button>
+                                <Button fx:id="refreshLocalFile" mnemonicParsing="false" styleClass="buttons"
+                                        onAction="#updateLocalView">
+                                    <VBox.margin>
+                                        <Insets bottom="5.0" left="20.0" right="10.0" top="5.0"/>
                                     </VBox.margin>
                                     <graphic>
                                         <ImageView fitHeight="40" fitWidth="40">
@@ -182,6 +237,12 @@
                                         <Tooltip text="Обновить"/>
                                     </tooltip>
                                 </Button>
+                                <!--<ImageView fx:id="loadingInLocal" fitHeight="40" fitWidth="40" visible="false">-->
+                                    <!--<Image url="/labels/loading.gif"/>-->
+                                    <!--<VBox.margin>-->
+                                        <!--<Insets left="30.0"/>-->
+                                    <!--</VBox.margin>-->
+                                <!--</ImageView>-->
                             </children>
                         </VBox>
                     </left>
@@ -196,7 +257,6 @@
 
                                 <TableColumn fx:id="localFileSize" text="Размер Файла"
                                              resizable="false"/>
-
                                 <TableColumn fx:id="localFileCreateDate" text="Дата добавления"
                                              resizable="false"/>
 
@@ -216,29 +276,47 @@
                         <Insets bottom="20.0"/>
                     </VBox.margin>
                     <graphic>
-                        <ImageView >
+                        <ImageView>
                             <Image url="/labels/registration.png"/>
                         </ImageView>
                     </graphic>
                 </Label>
-                <TextField maxWidth="200" prefWidth="200.0" promptText="Придумайте логин..." focusTraversable="false">
+
+
+                <HBox maxWidth="250" prefWidth="250.0" alignment="CENTER">
+                    <Label text="Логин:" prefWidth="50">
+                        <HBox.margin>
+                            <Insets top="1.0"/>
+                        </HBox.margin>
+                    </Label>
+                    <TextField fx:id="loginRegisterTextField" prefWidth="180.0" promptText="придумайте логин..."/>
                     <VBox.margin>
                         <Insets bottom="10.0"/>
                     </VBox.margin>
-                </TextField>
-                <PasswordField maxWidth="200" prefWidth="200.0" promptText="Придумайте пароль..." focusTraversable="false">
+                </HBox>
+                <HBox maxWidth="250" prefWidth="250.0" alignment="CENTER">
+                    <Label text="Пароль:" prefWidth="50">
+                        <HBox.margin>
+                            <Insets top="1.0"/>
+                        </HBox.margin>
+                    </Label>
+                    <PasswordField fx:id="passwordRegisterTextField" prefWidth="180.0"
+                                   promptText="придумайте пароль..."/>
                     <VBox.margin>
                         <Insets bottom="10.0"/>
                     </VBox.margin>
-                </PasswordField>
+                </HBox>
+
                 <HBox alignment="CENTER" prefHeight="45.0" prefWidth="600.0">
                     <children>
-                        <Button mnemonicParsing="false" text="Назад" styleClass="buttons" style="-fx-border-color: #7278F1" onAction="#backToLogin">
+                        <Button mnemonicParsing="false" text="Назад" styleClass="buttons"
+                                style="-fx-border-color: #7278F1" onAction="#backToLogin">
                             <HBox.margin>
                                 <Insets right="5.0"/>
                             </HBox.margin>
                         </Button>
-                        <Button mnemonicParsing="false" text="Зарегистрироваться" styleClass="buttons" style="-fx-border-color: #7278F1">
+                        <Button mnemonicParsing="false" text="Зарегистрироваться" styleClass="buttons"
+                                style="-fx-border-color: #7278F1" onAction="#registerInCloud">
                             <HBox.margin>
                                 <Insets left="5.0"/>
                             </HBox.margin>
@@ -248,4 +326,14 @@
             </children>
         </VBox>
     </right>
+    <bottom>
+        <HBox alignment="CENTER">
+            <Text fx:id="serviceMessage">
+                <HBox.margin>
+                    <Insets bottom="10.0"/>
+                </HBox.margin>
+            </Text>
+        </HBox>
+
+    </bottom>
 </BorderPane>

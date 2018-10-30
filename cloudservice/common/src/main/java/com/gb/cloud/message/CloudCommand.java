@@ -18,15 +18,7 @@ public class CloudCommand extends CloudMessage {
         return commandName;
     }
 
-    public void setCommandName(String commandName) {
-        this.commandName = commandName;
-    }
-
     public String getFileName() {
         return fileName;
-    }
-
-    public void setFileName(String fileName) {
-        this.fileName = fileName;
     }
 }

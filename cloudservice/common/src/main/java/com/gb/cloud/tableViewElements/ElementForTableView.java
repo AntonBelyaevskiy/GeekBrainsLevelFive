@@ -11,32 +11,21 @@ public class ElementForTableView implements Serializable {
 
     public ElementForTableView(String name, String size, Date createDate) {
         this.name = name;
-        this.size = size + " КБ";
+        this.size = String.valueOf((int)Math.ceil((double) Integer.parseInt(size)/1024)) + " КБ";
         this.createDate = createDate;
+
+
     }
 
     public String getName() {
         return name;
     }
 
-    public void setName(String name) {
-        this.name = name;
-    }
-
     public String getSize() {
         return size;
-    }
-
-    public void setSize(String size) {
-        this.size = size;
     }
 
     public Date getCreateDate() {
         return createDate;
     }
-
-    public void setCreateDate(Date createDate) {
-        this.createDate = createDate;
-    }
-
 }
