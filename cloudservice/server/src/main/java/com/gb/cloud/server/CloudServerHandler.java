@@ -3,7 +3,6 @@ package com.gb.cloud.server;
 import com.gb.cloud.message.*;
 import com.gb.cloud.tableViewElements.ElementBuilder;
 import com.gb.cloud.tableViewElements.ElementForTableView;
-import com.gb.cloud.transfer.Crypt;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.util.ReferenceCountUtil;
@@ -14,21 +13,30 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.*;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.stream.Collectors;
 
 public class CloudServerHandler extends ChannelInboundHandlerAdapter {
 
     private String login;
 
+    private ArrayBlockingQueue<Object> incomingData = new ArrayBlockingQueue<>(30);
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+
         try {
             if (msg == null)
                 return;
 
+            incomingData.put(msg);
+
             if (msg instanceof CloudAuthorization) {
-                CloudAuthorization message = (CloudAuthorization) msg;
+                CloudAuthorization message = (CloudAuthorization) incomingData.poll();
+                if (message == null) {
+                    return;
+                }
                 login = message.getLogin();
                 CloudCommand admitUser = new CloudCommand("/allowToEnter");
                 if (message.getStatus().equals("/create")) {
@@ -47,19 +55,19 @@ public class CloudServerHandler extends ChannelInboundHandlerAdapter {
 
             //действия, если прилетела команда
             else if (msg instanceof CloudCommand) {
-                Path path = Paths.get("server/storage/" + login + "/" + ((CloudCommand) msg).getFileName());
-                switch (((CloudCommand) msg).getCommandName()) {
+
+                CloudCommand message = (CloudCommand) incomingData.poll();
+                if (message == null) {
+                    return;
+                }
+
+                Path path = Paths.get("server/storage/" + login + "/" + message.getFileName());
+                switch (message.getCommandName()) {
                     case "/downloadFile":
                         long size = Files.size(path);
-                        int partOfFile = 1024 * 500 ;
-                        int parts = (int) Math.ceil((double) (size / partOfFile));
-
-                        if (size > partOfFile) {
-                            sendLargeFile(path, parts, ctx); //отправляем частями
-                        } else {
-                            CloudSmallFile file = takeFile(((CloudCommand) msg).getFileName());
-                            ctx.write(file);
-                        }
+                        int partOfFile = 1024 * 500;
+                        int parts = (int) Math.ceil((double) size / (double) partOfFile);
+                        sendFile(path, parts, ctx);
                         break;
                     case "/deleteFile":
                         System.out.println(path);
@@ -74,46 +82,36 @@ public class CloudServerHandler extends ChannelInboundHandlerAdapter {
                         break;
                 }
             }
-            //действия, если прилетел маленький файл
-            else if (msg instanceof CloudSmallFile) {
-                System.out.println("file came on server " + ((CloudSmallFile) msg).getName());
-                Path path = Paths.get("server/storage/" + login + "/" + ((CloudSmallFile) msg).getName());
-                byte[] content = ((CloudSmallFile) msg).getContent();
-                if (Files.exists(path)) {
-                    Files.delete(path);
-                    makeFile(path, content);
-                } else {
-                    makeFile(path, content);
+            //действия, если прилетел файл
+            else if (msg instanceof CloudFile) {
+                CloudFile message = (CloudFile) incomingData.poll();
+                if (message == null) {
+                    return;
                 }
-                //после того, как создали файл, сообщаем клиенту, что список файлов обновился
-                sendFileListToClient(ctx);
-            }
-            //действия, если прилетел большой файл
-            else if (msg instanceof CloudLargeFile) {
-                System.out.println("file came on server "
-                        + ((CloudLargeFile) msg).getName()
-                        + " file part: "
-                        + ((CloudLargeFile) msg).getPartNumber());
-                Path path = Paths.get("server/storage/" + login + "/" + ((CloudLargeFile) msg).getName());
-
-                if (((CloudLargeFile) msg).getPartNumber() == 1) {
-                    byte[] content = ((CloudLargeFile) msg).getContent();
-                    if (Files.exists(path)) {
-                        Files.delete(path);
-                        makeFile(path, content);
-                    } else {
-                        makeFile(path, content);
-                    }
-                } else {
-                    byte[] content = ((CloudLargeFile) msg).getContent();
-                    Files.write(path, content, StandardOpenOption.APPEND);
-                }
-                sendFileListToClient(ctx);
-
+                System.out.println("file came on server " + ((CloudFile) msg).getName()
+                        + " file part: " + message.getPartNumber());
+                saveFile(ctx, message);
             }
         } finally {
             ReferenceCountUtil.release(msg);
         }
+    }
+
+    private void saveFile(ChannelHandlerContext ctx, CloudFile msg) throws IOException {
+        Path path = Paths.get("server/storage/" + login + "/" + msg.getName());
+        if (msg.getPartNumber() == 1) {
+            byte[] content = msg.getContent();
+            if (Files.exists(path)) {
+                Files.delete(path);
+                makeFile(path, content);
+            } else {
+                makeFile(path, content);
+            }
+        } else {
+            byte[] content = msg.getContent();
+            Files.write(path, content, StandardOpenOption.APPEND);
+        }
+        sendFileListToClient(ctx);
     }
 
     private void sendFileListToClient(ChannelHandlerContext ctx) {
@@ -127,55 +125,38 @@ public class CloudServerHandler extends ChannelInboundHandlerAdapter {
         Files.write(path, content, StandardOpenOption.CREATE_NEW);
     }
 
-    private CloudSmallFile takeFile(String fileName) {
-        Path path = Paths.get("server/storage/" + login + "/" + fileName);
-        byte[] content = new byte[(int) path.toFile().length()];
-        try {
-            content = Files.readAllBytes(path);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return new CloudSmallFile(fileName, content);
-    }
-
-    private void sendLargeFile(Path path, int parts, ChannelHandlerContext ctx) {
+    private void sendFile(Path path, int parts, ChannelHandlerContext ctx) {
 
         int part = 1;
         int partSizeOfFile = 1024 * 500; //0.5 мегабайт
-        int currentPlaceInArray = 0;
         int read;
         byte[] current = new byte[partSizeOfFile];
 
         try (InputStream fileForeSend = new BufferedInputStream(new FileInputStream(String.valueOf(path)))) {
 
             do {
-                read = fileForeSend.read();
+                read = fileForeSend.read(current);
                 if (read != -1) {
-                    current[currentPlaceInArray++] = (byte) read;
-
-                    if (currentPlaceInArray == partSizeOfFile) {
-                        CloudLargeFile file = new CloudLargeFile(
+                    if (read == partSizeOfFile) {
+                        CloudFile file = new CloudFile(
                                 path.getFileName().toString(),
                                 current,
                                 parts,
                                 part);
                         ctx.write(file);
 
-                        currentPlaceInArray = 0;
-                        System.out.println("ser midl part " + part);
+                        System.out.println("ser middle part " + part);
                         part++;
+                    }else {
+                        byte[] lastPart = Arrays.copyOfRange(current,0,read);
+                        CloudFile file = new CloudFile(
+                                path.getFileName().toString(),
+                                lastPart,
+                                parts,
+                                part);
+                        ctx.write(file);
+                        System.out.println("end part " + part);
                     }
-                }
-                else {
-                    byte[] lastPart = new byte[currentPlaceInArray];
-                    System.arraycopy(current,0,lastPart,0,currentPlaceInArray);
-                    CloudLargeFile file = new CloudLargeFile(
-                            path.getFileName().toString(),
-                            lastPart,
-                            parts,
-                            part);
-                    ctx.write(file);
-                    System.out.println("ser end part " + part);
                 }
             } while (read != -1);
 

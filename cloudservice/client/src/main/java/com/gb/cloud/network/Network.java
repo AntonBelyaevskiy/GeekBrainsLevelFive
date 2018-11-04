@@ -1,10 +1,11 @@
 package com.gb.cloud.network;
 
-import com.gb.cloud.controller.CloudController;
+import com.gb.cloud.controller.Controller;
 import com.gb.cloud.message.*;
 import com.gb.cloud.tableViewElements.ElementForTableView;
 import io.netty.handler.codec.serialization.ObjectDecoderInputStream;
 import io.netty.handler.codec.serialization.ObjectEncoderOutputStream;
+import javafx.application.Platform;
 
 import java.io.*;
 import java.net.Socket;
@@ -13,30 +14,34 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.concurrent.ArrayBlockingQueue;
 
 //Класс в котором содержится бизнес-логика приложения
-public class CloudNetwork {
+public class Network {
 
     private static final int PORT = 8189;
     private static final String SERVER_IP = "localhost";
 
-    private static volatile CloudNetwork network;
-    private static CloudController controller;
+    private static volatile Network network;
+    private static Controller controller;
 
     private static Socket socket;
 
     private ObjectEncoderOutputStream encoder;
     private ObjectDecoderInputStream decoder;
 
-    private CloudNetwork() {
+    private ArrayBlockingQueue<Object> incomingData = new ArrayBlockingQueue<>(30);
+
+    private Network() {
 
     }
 
-    public static CloudNetwork getNetwork(CloudController connectController) {
+    public static Network getNetwork(Controller connectController) {
         if (network == null) {
-            synchronized (CloudNetwork.class) {
+            synchronized (Network.class) {
                 if (network == null) {
-                    network = new CloudNetwork();
+                    network = new Network();
                     controller = connectController;
                 }
             }
@@ -56,33 +61,35 @@ public class CloudNetwork {
             Thread workThread = new Thread(() -> {
                 try {
                     while (true) {
-                        //логика клиента
                         Object message = decoder.readObject();
-
+                        incomingData.put(message);
 
                         //если с сервера прилетает список файлов, обновляем список на клиенте
                         if (message instanceof CloudFilesList) {
-                            CloudFilesList msg = (CloudFilesList) message;
-                            CloudController.setCloudStorage(msg.getServerStorageList());
+                            CloudFilesList msg = (CloudFilesList) incomingData.poll();
+                            if (msg == null) {
+                                return;
+                            }
+                            Platform.runLater(() -> Controller.setCloudStorage(msg.getServerStorageList()));
                             controller.drawCloudTableView();
 
                         }
-
                         if (message instanceof CloudCommand) {
-                            if (((CloudCommand) message).getCommandName().equals("/exit"))
-                                System.exit(0);
-                            else
-                                doCommand((CloudCommand) message);
+                            CloudCommand msg = (CloudCommand) incomingData.poll();
+                            if (msg == null) {
+                                return;
+                            }
+                            doCommand(msg);
                         }
-                        if (message instanceof CloudSmallFile) {
-                            saveSmallFile((CloudSmallFile) message);
+                        if (message instanceof CloudFile) {
+                            CloudFile msg = (CloudFile) incomingData.poll();
+                            if (msg == null) {
+                                return;
+                            }
+                            saveFile(msg);
                         }
-                        if (message instanceof CloudLargeFile) {
-                            saveLargeFile((CloudLargeFile) message);
-                        }
-
                     }
-                } catch (IOException | ClassNotFoundException e) {
+                } catch (IOException | ClassNotFoundException | InterruptedException e) {
                     e.printStackTrace();
                 } finally {
                     disconnect();
@@ -129,24 +136,7 @@ public class CloudNetwork {
         }
     }
 
-    //если из облака прилетает файл, то сохраняем его на локальном репозитории
-    private void saveSmallFile(CloudSmallFile message) {
-        Path path = Paths.get("client/storage/" + message.getName());
-        byte[] content = message.getContent();
-
-        try {
-            if (Files.exists(path))
-                Files.delete(path);
-
-            Files.write(path, content, StandardOpenOption.CREATE_NEW);
-        } catch (IOException e) {
-            e.printStackTrace();
-        } finally {
-            controller.drawLocalTableView();
-        }
-    }
-
-    private void saveLargeFile(CloudLargeFile message) {
+    private void saveFile(CloudFile message) {
         Path path = Paths.get("client/storage/" + message.getName());
         byte[] contentPart = message.getContent();
         try {
@@ -156,78 +146,67 @@ public class CloudNetwork {
                 Files.write(path, contentPart, StandardOpenOption.CREATE_NEW);
             } else {
                 Files.write(path, contentPart, StandardOpenOption.APPEND);
-                if (message.getPartNumber() == message.getParts()) {
-                    controller.drawLocalTableView();
-                }
             }
         } catch (IOException e) {
             e.printStackTrace();
+        } finally {
+            if (message.getPartNumber() % 100 == 0) {
+                controller.drawLocalTableView();
+            }
+            if (message.getPartNumber() == message.getParts()) {
+                controller.drawLocalTableView();
+                Platform.runLater(() -> controller.cloudIndicator.setVisible(false));
+            }
         }
     }
 
     public ArrayList<ElementForTableView> getCloudFilesStorage() {
-        return CloudController.getCloudStorage();
+        return Controller.getCloudStorage();
     }
 
     //метод, который отправляет наш файл в облако, методу необходимо сообщить название отправляемого файла
     public void uploadFileOnCloud(String name) {
 
-        int partOfFile = 1024 * 1024 * 20;
+        Platform.runLater(() -> controller.localIndicator.setVisible(true));
 
         try {
             long size = Files.size(Paths.get("client/storage/" + name));
-            if (size <= partOfFile) {
-                sendSmallFile(name);
-            } else {
-                    int parts = (int) Math.ceil((double) (size / partOfFile));
-                    sendLargeFile(name, parts);
-            }
+            int partOfFile = 1024 * 1024 * 20;
+            int parts = (int) Math.ceil((double) size / (double) partOfFile);
+
+            Thread fileSendThread = new Thread(() -> sendFile(name, parts));
+            fileSendThread.start();
 
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private void sendSmallFile(String name) {
-        try {
-            byte[] content = Files.readAllBytes(Paths.get("client/storage/" + name));
-            CloudSmallFile file = new CloudSmallFile(name, content);
-            encoder.writeObject(file);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void sendLargeFile(String name, int parts) {
-
+    private void sendFile(String name, int parts) {
 
         int part = 1;
         int partSizeOfFile = 1024 * 1024 * 20; //20 мегабайт
-        int currentPlaceInArray = 0;
         int read;
         byte[] current = new byte[partSizeOfFile];
 
         try (InputStream fileForeSend = new BufferedInputStream(new FileInputStream("client/storage/" + name))) {
 
-            System.out.println(Files.size(Paths.get("client/storage/" + name)));
-
             do {
-                read = fileForeSend.read();
-                if (read != -1) {
-                    current[currentPlaceInArray++] = (byte) read;
 
-                    if (currentPlaceInArray == partSizeOfFile) {
+                read = fileForeSend.read(current);
+                if (read != -1) {
+
+                    if (read == partSizeOfFile) {
                         System.out.println(part + " middle");
-                        CloudLargeFile file = new CloudLargeFile(name, current, parts, part++);
+                        CloudFile file = new CloudFile(name, current, parts, part++);
                         encoder.writeObject(file);
-                        currentPlaceInArray = 0;
+                    } else {
+                        byte[] lastPart = Arrays.copyOfRange(current, 0, read);
+                        System.out.println(part + " end");
+                        CloudFile file = new CloudFile(name, lastPart, parts, part);
+                        encoder.writeObject(file);
+                        Platform.runLater(() -> controller.localIndicator.setVisible(false));
                     }
-                } else {
-                    byte[] lastPart = new byte[currentPlaceInArray];
-                    System.arraycopy(current, 0, lastPart, 0, currentPlaceInArray);
-                    System.out.println(part + " end");
-                    CloudLargeFile file = new CloudLargeFile(name, lastPart, parts, part);
-                    encoder.writeObject(file);
                 }
             } while (read != -1);
 
@@ -238,12 +217,13 @@ public class CloudNetwork {
     }
 
     public void downloadFileFromCloud(String name) {
-            CloudCommand command = new CloudCommand("/downloadFile", name);
-            try {
-                encoder.writeObject(command);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+        Platform.runLater(() -> controller.cloudIndicator.setVisible(true));
+        CloudCommand command = new CloudCommand("/downloadFile", name);
+        try {
+            encoder.writeObject(command);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public void deleteFileOnCloudStorage(String name) {

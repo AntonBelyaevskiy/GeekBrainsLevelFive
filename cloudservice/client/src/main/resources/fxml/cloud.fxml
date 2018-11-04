@@ -16,10 +16,11 @@
 <?import javafx.scene.layout.HBox?>
 
 <?import javafx.scene.text.Text?>
+<?import javafx.scene.control.ProgressIndicator?>
 <BorderPane stylesheets="@../css/mystyle.css"
             xmlns="http://javafx.com/javafx/8.0.171"
             xmlns:fx="http://javafx.com/fxml/1"
-            fx:controller="com.gb.cloud.controller.CloudController">
+            fx:controller="com.gb.cloud.controller.Controller">
     <left>
         <VBox fx:id="loginPane" alignment="CENTER">
             <children>
@@ -151,6 +152,7 @@
                                         <Tooltip text="Выйти"/>
                                     </tooltip>
                                 </Button>
+                                <ProgressIndicator fx:id="cloudIndicator" visible="false"/>
 
                             </children>
                         </VBox>
@@ -237,12 +239,7 @@
                                         <Tooltip text="Обновить"/>
                                     </tooltip>
                                 </Button>
-                                <!--<ImageView fx:id="loadingInLocal" fitHeight="40" fitWidth="40" visible="false">-->
-                                    <!--<Image url="/labels/loading.gif"/>-->
-                                    <!--<VBox.margin>-->
-                                        <!--<Insets left="30.0"/>-->
-                                    <!--</VBox.margin>-->
-                                <!--</ImageView>-->
+                                <ProgressIndicator fx:id="localIndicator" visible="false"/>
                             </children>
                         </VBox>
                     </left>

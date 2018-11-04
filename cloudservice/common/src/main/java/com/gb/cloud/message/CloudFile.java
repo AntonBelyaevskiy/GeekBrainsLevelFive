@@ -1,14 +1,18 @@
 package com.gb.cloud.message;
 
-public class CloudLargeFile extends CloudMessage {
+public class CloudFile extends CloudMessage {
     private String name;
     private byte[] content;
     private int parts;
     private int partNumber;
 
-    public CloudLargeFile(String name, byte[] content, int parts, int numberOfPart) {
+    public CloudFile(String name, byte[] content) {
         this.name = name;
         this.content = content;
+    }
+
+    public CloudFile(String name, byte[] content, int parts, int numberOfPart) {
+        this(name, content);
         this.parts = parts;
         this.partNumber = numberOfPart;
     }

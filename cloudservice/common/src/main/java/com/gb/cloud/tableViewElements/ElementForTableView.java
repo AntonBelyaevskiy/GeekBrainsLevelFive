@@ -14,7 +14,6 @@ public class ElementForTableView implements Serializable {
         this.size = String.valueOf((int)Math.ceil((double) Integer.parseInt(size)/1024)) + " КБ";
         this.createDate = createDate;
 
-
     }
 
     public String getName() {

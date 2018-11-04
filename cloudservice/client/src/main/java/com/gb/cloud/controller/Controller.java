@@ -1,7 +1,7 @@
 package com.gb.cloud.controller;
 
 import com.gb.cloud.Main;
-import com.gb.cloud.network.CloudNetwork;
+import com.gb.cloud.network.Network;
 import com.gb.cloud.tableViewElements.ElementBuilder;
 import com.gb.cloud.tableViewElements.ElementForTableView;
 import javafx.beans.property.SimpleObjectProperty;
@@ -25,7 +25,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class CloudController {
+public class Controller {
 
     @FXML
     public Button download;
@@ -53,9 +53,13 @@ public class CloudController {
     public Button refreshLocalFile;
     @FXML
     public Button exitFromCloud;
+    @FXML
+    public ProgressIndicator localIndicator;
+    @FXML
+    public ProgressIndicator cloudIndicator;
 
     @FXML
-    private CloudNetwork network;
+    private Network network;
 
     @FXML
     public VBox loginPane;
@@ -120,7 +124,7 @@ public class CloudController {
     }
 
     public static void setCloudStorage(ArrayList<ElementForTableView> cloudStorage) {
-        CloudController.cloudStorage = cloudStorage;
+        Controller.cloudStorage = cloudStorage;
     }
 
     //////////БЛОК обработка кнопок окна приветствия
@@ -237,7 +241,7 @@ public class CloudController {
 
     //Подключаемся к серверу, если авторизация прошла успешно
     private void connect() {
-        network = CloudNetwork.getNetwork(this);
+        network = Network.getNetwork(this);
         network.run();
     }
 
